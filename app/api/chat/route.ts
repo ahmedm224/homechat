@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
     let chatId: string | undefined
     let messageContent = ''
     let files: File[] = []
+    let reasoningEffort: 'minimal' | 'medium' | undefined
     let history: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = []
 
     if (contentType.includes('multipart/form-data')) {
@@ -29,13 +30,20 @@ export async function POST(request: NextRequest) {
           history = JSON.parse(String(historyStr))
         } catch {}
       }
+      const effort = formData.get('reasoningEffort')
+      if (effort && (effort === 'minimal' || effort === 'medium')) {
+        reasoningEffort = effort
+      }
       const fileEntries = formData.getAll('files')
       files = fileEntries.filter((f): f is File => f instanceof File)
     } else {
-      const { chatId: cid, message, history: historyJson } = await request.json()
+      const { chatId: cid, message, history: historyJson, reasoningEffort: effort } = await request.json()
       chatId = cid
       messageContent = message?.content || ''
       history = Array.isArray(historyJson) ? historyJson : []
+      if (effort && (effort === 'minimal' || effort === 'medium')) {
+        reasoningEffort = effort
+      }
     }
 
     // If user is authenticated and no chatId provided, create a new chat to persist
@@ -132,93 +140,105 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const userContent: any = attachmentUrls.length > 0
-      ? [
-          { type: 'text', text: messageContent },
-          ...attachmentUrls.map((url) => ({ type: 'image_url', image_url: { url } })),
-        ]
-      : messageContent
-
-    const messages = [
-      { role: 'system', content: 'You are a helpful AI assistant. Be concise and helpful in your responses.' },
-      ...chatHistory,
-      { role: 'user', content: userContent as any },
-    ]
-
-    let completion
-    try {
-      completion = await openai.chat.completions.create({
-        model: process.env.OPENAI_MODEL_NAME || 'gpt-4',
-        messages: messages as any,
-        max_tokens: 1000,
-        temperature: 0.7,
-      })
-    } catch (err: any) {
-      // Fallback for models that don't support image content arrays
-      const textOnlyMessages = [
-        { role: 'system', content: 'You are a helpful AI assistant. Be concise and helpful in your responses.' },
-        ...chatHistory,
-        {
-          role: 'user',
-          content:
-            attachmentUrls.length > 0
-              ? `${messageContent}\n\nAttached files (URLs):\n${attachmentUrls.join('\n')}`
-              : messageContent,
-        },
-      ]
-      completion = await openai.chat.completions.create({
-        model: process.env.OPENAI_MODEL_NAME || 'gpt-4',
-        messages: textOnlyMessages as any,
-        max_tokens: 1000,
-        temperature: 0.7,
-      })
+    const modelName = process.env.OPENAI_MODEL_NAME
+    if (!modelName) {
+      return NextResponse.json({ error: 'OPENAI_MODEL_NAME is not set' }, { status: 400 })
     }
 
-    const assistantResponse = completion.choices[0]?.message?.content || 'Sorry, I could not generate a response.'
+    // Build a safe, text-only prompt compatible across models
+    const systemPrompt = 'You are a helpful AI assistant. Be concise and helpful in your responses.'
+    const historyText = chatHistory
+      .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+      .join('\n')
+    const attachmentNote = attachmentUrls.length > 0
+      ? `\n\nAttached files (URLs):\n${attachmentUrls.join('\n')}`
+      : ''
+    const userPrompt = `${messageContent}${attachmentNote}`
 
-    // Persist assistant message if applicable
-    let assistantMessage: any = {
-      id: `temp-${Date.now()}`,
-      chat_id: chatId || '',
-      role: 'assistant',
-      content: assistantResponse,
-      created_at: new Date().toISOString(),
-    }
-    if (user && chatId) {
-      const { data: insertedAssistantMessage, error: assistantMessageError } = await supabase
-        .from('messages')
-        .insert([{ chat_id: chatId, role: 'assistant', content: assistantResponse }])
-        .select()
-        .single()
-      if (assistantMessageError) {
-        console.error('Error saving assistant message:', assistantMessageError)
-        return NextResponse.json({ error: 'Failed to save assistant message' }, { status: 500 })
-      }
-      assistantMessage = insertedAssistantMessage
-    }
+    // Streaming response
+    const encoder = new TextEncoder()
+    let fullText = ''
+    const body = new ReadableStream<Uint8Array>({
+      start: async (controller) => {
+        try {
+          if (modelName.toLowerCase().startsWith('gpt-5')) {
+            const transcript = `System: ${systemPrompt}`
+              + (historyText ? `\n\n${historyText}` : '')
+              + `\n\nUser: ${userPrompt}`
+            const stream: any = await openai.responses.create({
+              model: modelName,
+              input: transcript,
+              stream: true,
+              ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
+            })
+            for await (const event of stream) {
+              // response.output_text.delta contains incremental text tokens
+              if (event.type === 'response.output_text.delta') {
+                const delta = event.delta as string
+                if (delta) {
+                  fullText += delta
+                  controller.enqueue(encoder.encode(delta))
+                }
+              }
+            }
+          } else {
+            const stream: any = await openai.chat.completions.create({
+              model: modelName,
+              messages: [
+                { role: 'system', content: systemPrompt },
+                ...chatHistory,
+                { role: 'user', content: userPrompt },
+              ] as any,
+              stream: true,
+            })
+            for await (const part of stream) {
+              const delta = part?.choices?.[0]?.delta?.content ?? ''
+              if (delta) {
+                fullText += delta
+                controller.enqueue(encoder.encode(delta))
+              }
+            }
+          }
+        } catch (err: any) {
+          const errMsg = err?.message || 'Unknown error'
+          const errData = err?.response?.data || err?.data
+          console.error('OpenAI error:', errMsg, errData)
+          controller.error(err)
+          return
+        }
 
-    // Update chat title on first message if we just created the chat
-    if (user && chatId && createdChat) {
-      const title = messageContent.slice(0, 50) + (messageContent.length > 50 ? '...' : '')
-      await supabase.from('chats').update({ title }).eq('id', chatId)
-    }
-
-    // For anonymous users, fabricate a userMessage response
-    if (!userMessage) {
-      userMessage = {
-        id: `temp-${Date.now() - 1}`,
-        chat_id: chatId || '',
-        role: 'user',
-        content: messageContent,
-        created_at: new Date().toISOString(),
-      }
-    }
-
-    return NextResponse.json({
-      userMessage,
-      assistantMessage,
-      ...(createdChat ? { chat: createdChat } : {}),
+        // Persist assistant message if applicable
+        try {
+          if (user && chatId) {
+            const { error: assistantMessageError } = await supabase
+              .from('messages')
+              .insert([{ chat_id: chatId, role: 'assistant', content: fullText || ' ' }])
+            if (assistantMessageError) {
+              console.error('Error saving assistant message:', assistantMessageError)
+            }
+            // Update chat title if we just created it
+            if (createdChat) {
+              const title = messageContent.slice(0, 50) + (messageContent.length > 50 ? '...' : '')
+              await supabase.from('chats').update({ title }).eq('id', chatId!)
+            }
+          }
+        } finally {
+          controller.close()
+        }
+      },
     })
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      'Transfer-Encoding': 'chunked',
+      Connection: 'keep-alive',
+    }
+    if (chatId) headers['X-Chat-Id'] = chatId
+    if (createdChat?.title) headers['X-Chat-Title'] = createdChat.title
+    if (createdChat) headers['X-Chat-Created'] = '1'
+
+    return new Response(body, { headers })
   } catch (error) {
     console.error('Error in POST /api/chat:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

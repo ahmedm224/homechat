@@ -1,7 +1,7 @@
 'use client'
 
 import { Message } from '@/types'
-import { User, Bot } from 'lucide-react'
+import { User, Bot, Copy } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -13,6 +13,11 @@ interface MessageComponentProps {
 
 export default function MessageComponent({ message }: MessageComponentProps) {
   const isUser = message.role === 'user'
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(message.content)
+    } catch {}
+  }
 
   return (
     <div className={cn(
@@ -41,11 +46,20 @@ export default function MessageComponent({ message }: MessageComponentProps) {
           isUser ? "items-end" : "items-start"
         )}>
           <div className={cn(
-            "rounded-lg px-4 py-2 max-w-full",
+            "rounded-lg px-4 py-2 max-w-full relative",
             isUser 
               ? "bg-primary text-primary-foreground" 
               : "bg-muted text-foreground"
           )}>
+            {!isUser && (
+              <button
+                onClick={handleCopy}
+                title="Copy"
+                className="absolute top-2 right-2 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <Copy className="h-3 w-3" />
+              </button>
+            )}
             <div className="prose prose-sm max-w-none dark:prose-invert">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}

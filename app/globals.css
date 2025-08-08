@@ -114,6 +114,20 @@
   @apply list-decimal list-inside mb-4;
 }
 
+/* Tables */
+.markdown table {
+  @apply w-full text-sm border-collapse my-3;
+}
+.markdown thead {
+  @apply bg-muted;
+}
+.markdown th, .markdown td {
+  @apply border border-border px-3 py-2 text-left align-top;
+}
+.markdown tbody tr:nth-child(even) {
+  @apply bg-muted/40;
+}
+
 .markdown code {
   @apply bg-muted px-1 py-0.5 rounded text-sm;
 }

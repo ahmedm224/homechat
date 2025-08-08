@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { User } from '@supabase/supabase-js'
-import { Send, Paperclip, X } from 'lucide-react'
+import { Send, Paperclip, X, Pencil } from 'lucide-react'
 import { Chat, Message } from '@/types'
 import MessageComponent from './MessageComponent'
 import FileUpload from './FileUpload'
+import dynamic from 'next/dynamic'
 import { cn } from '@/lib/utils'
 
 interface ChatInterfaceProps {
@@ -20,6 +21,8 @@ export default function ChatInterface({ currentChat, onChatUpdate, onChatCreated
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [attachments, setAttachments] = useState<File[]>([])
+  const [reasoningEffort, setReasoningEffort] = useState<'minimal' | 'medium'>('minimal')
+  const [showCanvas, setShowCanvas] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -88,15 +91,50 @@ export default function ChatInterface({ currentChat, onChatUpdate, onChatCreated
           formData.append('files', file)
         })
       }
+      formData.append('reasoningEffort', reasoningEffort)
 
       const response = await fetch('/api/chat', {
         method: 'POST',
         body: formData,
       })
 
-      if (response.ok) {
+      if (response.ok && response.headers.get('Content-Type')?.startsWith('text/plain')) {
+        // Streaming path
+        // If server created a chat on demand, capture it via headers
+        const newChatId = response.headers.get('X-Chat-Id')
+        const created = response.headers.get('X-Chat-Created') === '1'
+        if (!currentChat && newChatId && created) {
+          onChatUpdate()
+        }
+
+        const reader = (response.body as ReadableStream).getReader()
+        const decoder = new TextDecoder()
+        let assistantText = ''
+        // Insert a temp assistant message to update progressively
+        const tempAssistantId = `temp-assistant-${Date.now()}`
+        setMessages(prev => [
+          ...prev.filter(m => m.id !== tempUserMessage.id),
+          {
+            id: tempAssistantId,
+            chat_id: currentChat?.id || newChatId || '',
+            role: 'assistant',
+            content: '',
+            created_at: new Date().toISOString(),
+          } as Message,
+        ])
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          const chunk = decoder.decode(value)
+          assistantText += chunk
+          setMessages(prev => prev.map(m => m.id === tempAssistantId ? { ...m, content: assistantText } : m))
+        }
+
+        onChatUpdate()
+      } else if (response.ok) {
+        // Non-stream JSON fallback
         const data = await response.json()
-        // Replace temp message with real message and add assistant response
         setMessages(prev => {
           const filtered = prev.filter(msg => msg.id !== tempUserMessage.id)
           return [...filtered, data.userMessage, data.assistantMessage]
@@ -108,7 +146,12 @@ export default function ChatInterface({ currentChat, onChatUpdate, onChatCreated
       } else {
         // Remove temp message on error
         setMessages(prev => prev.filter(msg => msg.id !== tempUserMessage.id))
-        console.error('Error sending message')
+        try {
+          const err = await response.json()
+          console.error('Error sending message', err)
+        } catch {
+          console.error('Error sending message')
+        }
       }
     } catch (error) {
       console.error('Error sending message:', error)
@@ -200,6 +243,20 @@ export default function ChatInterface({ currentChat, onChatUpdate, onChatCreated
             </div>
             
             <div className="flex items-center space-x-2">
+              {/* Reasoning effort selector (gpt-5 only) */}
+              <select
+                value={reasoningEffort}
+                onChange={(e) => setReasoningEffort(e.target.value as 'minimal' | 'medium')}
+                title="Reasoning effort"
+                className={cn(
+                  "h-10 rounded-md border border-input bg-background px-2 text-sm",
+                  "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                )}
+              >
+                <option value="minimal">Fast</option>
+                <option value="medium">Balanced</option>
+              </select>
+
               {user ? (
                 <FileUpload onUpload={handleFileUpload}>
                   <button
@@ -226,6 +283,20 @@ export default function ChatInterface({ currentChat, onChatUpdate, onChatCreated
                 </button>
               )}
               
+              {user && (
+                <button
+                  type="button"
+                  onClick={() => setShowCanvas(true)}
+                  title="Open canvas"
+                  className={cn(
+                    "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                    "border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-10 w-10"
+                  )}
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+              )}
+
               <button
                 type="submit"
                 disabled={isLoading || (!input.trim() && attachments.length === 0)}
@@ -239,7 +310,17 @@ export default function ChatInterface({ currentChat, onChatUpdate, onChatCreated
             </div>
           </div>
         </form>
+        {showCanvas && user && (
+          <DynamicCanvasModal
+            onClose={() => setShowCanvas(false)}
+            onSave={(file) => {
+              setAttachments(prev => [...prev, file])
+            }}
+          />
+        )}
       </div>
     </div>
   )
 } 
+
+const DynamicCanvasModal = dynamic(() => import('./CanvasModal'), { ssr: false })
