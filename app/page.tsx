@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import ChatInterface from '@/components/ChatInterface'
 import AuthModal from '@/components/AuthModal'
 import Header from '@/components/Header'
+import dynamic from 'next/dynamic'
 import { Chat, Message } from '@/types'
 
 export default function Home() {
@@ -13,6 +14,7 @@ export default function Home() {
   const [currentChat, setCurrentChat] = useState<Chat | null>(null)
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [showPeople, setShowPeople] = useState(false)
 
   useEffect(() => {
     if (user) {
@@ -85,6 +87,7 @@ export default function Home() {
         onNewChat={createNewChat}
         onSignIn={() => setShowAuthModal(true)}
         onSignOut={() => setCurrentChat(null)}
+        onOpenPeople={() => setShowPeople(true)}
       />
       
       <main className="flex-1 flex flex-col md:flex-row">
@@ -139,6 +142,12 @@ export default function Home() {
           }}
         />
       )}
+
+      {showPeople && (
+        <DynamicPeopleModal onClose={() => setShowPeople(false)} />
+      )}
     </div>
   )
 } 
+
+const DynamicPeopleModal = dynamic(() => import('@/components/PeopleModal'), { ssr: false })

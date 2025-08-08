@@ -216,10 +216,57 @@ export async function POST(request: NextRequest) {
             if (assistantMessageError) {
               console.error('Error saving assistant message:', assistantMessageError)
             }
-            // Update chat title if we just created it
+
+            // Generate and set AI title if needed
+            let shouldSetTitle = false
             if (createdChat) {
-              const title = messageContent.slice(0, 50) + (messageContent.length > 50 ? '...' : '')
-              await supabase.from('chats').update({ title }).eq('id', chatId!)
+              shouldSetTitle = true
+            } else {
+              const { data: existingChat } = await supabase
+                .from('chats')
+                .select('title')
+                .eq('id', chatId!)
+                .single()
+              const currentTitle = existingChat?.title?.trim() || ''
+              if (!currentTitle || currentTitle.toLowerCase() === 'new chat') {
+                shouldSetTitle = true
+              }
+            }
+
+            if (shouldSetTitle) {
+              const modelName = process.env.OPENAI_MODEL_NAME || ''
+              const titlePrompt = `Create a very short, descriptive chat title (max 6 words, no quotes) based on this conversation.\n\nUser: ${messageContent}\nAssistant: ${fullText.slice(0, 300)}`
+              let newTitle = ''
+              try {
+                if (modelName.toLowerCase().startsWith('gpt-5')) {
+                  const tResp: any = await openai.responses.create({
+                    model: modelName,
+                    input: titlePrompt,
+                  })
+                  newTitle =
+                    tResp?.output_text ||
+                    tResp?.choices?.[0]?.message?.content ||
+                    tResp?.output?.[0]?.content?.[0]?.text ||
+                    tResp?.data?.[0]?.content?.[0]?.text?.value ||
+                    ''
+                } else {
+                  const tComp = await openai.chat.completions.create({
+                    model: modelName,
+                    messages: [
+                      { role: 'system', content: 'Return only a concise, descriptive chat title. Max 6 words. No quotes.' },
+                      { role: 'user', content: titlePrompt },
+                    ] as any,
+                    temperature: 0.3,
+                  })
+                  newTitle = tComp.choices?.[0]?.message?.content || ''
+                }
+              } catch (e) {
+                // Fallback to truncated user message if model title generation fails
+                newTitle = messageContent.slice(0, 50)
+              }
+              newTitle = (newTitle || 'New Chat').replace(/^"|"$/g, '').trim()
+              if (newTitle.length > 60) newTitle = newTitle.slice(0, 60)
+              await supabase.from('chats').update({ title: newTitle }).eq('id', chatId!)
             }
           }
         } finally {

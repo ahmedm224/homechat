@@ -49,7 +49,7 @@ export default function MessageComponent({ message }: MessageComponentProps) {
             "rounded-lg px-4 py-2 max-w-full relative",
             isUser 
               ? "bg-primary text-primary-foreground" 
-              : "bg-muted text-foreground"
+              : "bg-transparent text-foreground"
           )}>
             {!isUser && (
               <button

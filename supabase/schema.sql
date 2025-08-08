@@ -207,3 +207,21 @@ WITH CHECK (bucket_id = 'attachments' AND auth.role() = 'authenticated');
 CREATE POLICY IF NOT EXISTS "Authenticated users can delete own attachments"
 ON storage.objects FOR DELETE
 USING (bucket_id = 'attachments' AND auth.role() = 'authenticated');
+
+-- User-to-user mediated messages
+CREATE TABLE IF NOT EXISTS public.user_messages (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  sender_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  recipient_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE public.user_messages ENABLE ROW LEVEL SECURITY;
+
+-- RLS: sender can insert, both sender and recipient can read
+CREATE POLICY IF NOT EXISTS "Sender can insert own user_messages" ON public.user_messages
+  FOR INSERT WITH CHECK (auth.uid() = sender_id);
+
+CREATE POLICY IF NOT EXISTS "Sender or recipient can view user_messages" ON public.user_messages
+  FOR SELECT USING (auth.uid() = sender_id OR auth.uid() = recipient_id);
