@@ -1,3 +1,4 @@
+export const runtime = 'nodejs'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -46,40 +47,65 @@ export async function POST(request: NextRequest) {
 
     if (!refined.trim()) refined = rawMessage
 
-    // Save to user_messages and also surface in recipient's chat list
+    // Save to user_messages (with robust fallback if some columns are missing)
     const insertClient = supabaseAdmin ?? supabase
-    const { error } = await insertClient.from('user_messages').insert([
-      { sender_id: user?.id || null, recipient_id: recipientId, content: refined, sender_name: senderName },
-    ])
-    if (error) return NextResponse.json({ error: 'Failed to save message' }, { status: 500 })
+    let insertError: any = null
+    try {
+      const { error } = await insertClient.from('user_messages').insert([
+        { sender_id: user?.id || null, recipient_id: recipientId, content: refined, sender_name: senderName },
+      ])
+      insertError = error
+    } catch (e) {
+      insertError = e
+    }
+    if (insertError) {
+      // Fallback: try without optional columns
+      try {
+        const { error } = await insertClient.from('user_messages').insert([
+          { sender_id: user?.id || null, recipient_id: recipientId, content: refined },
+        ])
+        if (error) {
+          console.error('Insert user_messages failed:', error)
+          return NextResponse.json({ error: 'Failed to save message' }, { status: 500 })
+        }
+      } catch (e2) {
+        console.error('Insert user_messages exception:', e2)
+        return NextResponse.json({ error: 'Failed to save message' }, { status: 500 })
+      }
+    }
 
     // Also write to the recipient's chat history as an assistant message, prefixed by sender name
     if (supabaseAdmin) {
-      const { data: existingChat } = await supabaseAdmin
-        .from('chats')
-        .select('id')
-        .eq('user_id', recipientId)
-        .eq('title', 'Messages')
-        .maybeSingle()
-
-      let chatId = existingChat?.id as string | undefined
-      if (!chatId) {
-        const { data: newChat } = await supabaseAdmin
+      try {
+        const { data: existingChat } = await supabaseAdmin
           .from('chats')
-          .insert([{ user_id: recipientId, title: 'Messages' }])
           .select('id')
-          .single()
-        chatId = newChat?.id
-      }
+          .eq('user_id', recipientId)
+          .eq('title', 'Messages')
+          .maybeSingle()
 
-      if (chatId) {
-        await supabaseAdmin
-          .from('messages')
-          .insert([{ chat_id: chatId, role: 'assistant', content: `${senderName}: ${refined}` }])
-        await supabaseAdmin
-          .from('chats')
-          .update({ updated_at: new Date().toISOString() })
-          .eq('id', chatId)
+        let chatId = existingChat?.id as string | undefined
+        if (!chatId) {
+          const { data: newChat } = await supabaseAdmin
+            .from('chats')
+            .insert([{ user_id: recipientId, title: 'Messages' }])
+            .select('id')
+            .single()
+          chatId = newChat?.id
+        }
+
+        if (chatId) {
+          await supabaseAdmin
+            .from('messages')
+            .insert([{ chat_id: chatId, role: 'assistant', content: `${senderName}: ${refined}` }])
+          await supabaseAdmin
+            .from('chats')
+            .update({ updated_at: new Date().toISOString() })
+            .eq('id', chatId)
+        }
+      } catch (e) {
+        console.error('Failed to mirror message to recipient chat:', e)
+        // Do not fail the request; user message saved above
       }
     }
 

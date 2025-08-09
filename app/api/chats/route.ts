@@ -1,3 +1,4 @@
+export const runtime = 'nodejs'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 
@@ -6,7 +7,8 @@ export async function GET(request: NextRequest) {
     const supabase = createServerSupabaseClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      // Return empty list instead of 401 to avoid noisy console errors for anonymous users
+      return NextResponse.json([])
     }
 
     const { data: chats, error } = await supabase

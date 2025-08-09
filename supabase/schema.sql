@@ -187,24 +187,28 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('attachments', 'attachments', true)
 ON CONFLICT (id) DO NOTHING;
 
--- Storage RLS policies
+-- Storage RLS policies (drop/recreate since CREATE POLICY doesn't support IF NOT EXISTS reliably)
 -- Allow public read access to files in the attachments bucket
-CREATE POLICY IF NOT EXISTS "Public read access to attachments"
+DROP POLICY IF EXISTS "Public read access to attachments" ON storage.objects;
+CREATE POLICY "Public read access to attachments"
 ON storage.objects FOR SELECT
 USING (bucket_id = 'attachments');
 
 -- Allow authenticated users to upload to the attachments bucket
-CREATE POLICY IF NOT EXISTS "Authenticated users can upload attachments"
+DROP POLICY IF EXISTS "Authenticated users can upload attachments" ON storage.objects;
+CREATE POLICY "Authenticated users can upload attachments"
 ON storage.objects FOR INSERT
 WITH CHECK (bucket_id = 'attachments');
 
 -- Allow authenticated users to update/delete their own files
-CREATE POLICY IF NOT EXISTS "Authenticated users can update own attachments"
+DROP POLICY IF EXISTS "Authenticated users can update own attachments" ON storage.objects;
+CREATE POLICY "Authenticated users can update own attachments"
 ON storage.objects FOR UPDATE
 USING (bucket_id = 'attachments' AND auth.role() = 'authenticated')
 WITH CHECK (bucket_id = 'attachments' AND auth.role() = 'authenticated');
 
-CREATE POLICY IF NOT EXISTS "Authenticated users can delete own attachments"
+DROP POLICY IF EXISTS "Authenticated users can delete own attachments" ON storage.objects;
+CREATE POLICY "Authenticated users can delete own attachments"
 ON storage.objects FOR DELETE
 USING (bucket_id = 'attachments' AND auth.role() = 'authenticated');
 
@@ -219,15 +223,26 @@ CREATE TABLE IF NOT EXISTS public.user_messages (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Ensure columns exist on older databases
+ALTER TABLE public.user_messages ADD COLUMN IF NOT EXISTS sender_name TEXT;
+ALTER TABLE public.user_messages ADD COLUMN IF NOT EXISTS read BOOLEAN DEFAULT FALSE;
+
 ALTER TABLE public.user_messages ENABLE ROW LEVEL SECURITY;
 
 -- RLS: sender can insert, both sender and recipient can read
-CREATE POLICY IF NOT EXISTS "Sender can insert own user_messages" ON public.user_messages
+DROP POLICY IF EXISTS "Sender can insert own user_messages" ON public.user_messages;
+CREATE POLICY "Sender can insert own user_messages" ON public.user_messages
   FOR INSERT WITH CHECK (auth.uid() = sender_id);
 
-CREATE POLICY IF NOT EXISTS "Sender or recipient can view user_messages" ON public.user_messages
+DROP POLICY IF EXISTS "Sender or recipient can view user_messages" ON public.user_messages;
+CREATE POLICY "Sender or recipient can view user_messages" ON public.user_messages
   FOR SELECT USING (auth.uid() = sender_id OR auth.uid() = recipient_id);
 
 -- Helpful indexes
 CREATE INDEX IF NOT EXISTS idx_user_messages_recipient_id_read
   ON public.user_messages(recipient_id, read);
+
+-- Allow anonymous users to insert messages with NULL sender_id (for public send)
+DROP POLICY IF EXISTS "Anon can insert user_messages with null sender" ON public.user_messages;
+CREATE POLICY "Anon can insert user_messages with null sender" ON public.user_messages
+  FOR INSERT WITH CHECK (auth.uid() IS NULL AND sender_id IS NULL);

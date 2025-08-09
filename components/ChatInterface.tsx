@@ -208,7 +208,10 @@ export default function ChatInterface({ currentChat, onChatUpdate, onChatCreated
       {/* Messages - Full width, no padding constraints */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto space-y-3 px-3 sm:px-4 pb-28"
+        className={cn(
+          'flex-1 overflow-y-auto space-y-3 px-3 sm:px-4',
+          isEmptyThread ? 'pb-6' : 'pb-28'
+        )}
       >
         {!currentChat && isEmptyThread && !user && (
           <div className="text-center text-muted-foreground mt-8">
@@ -238,21 +241,29 @@ export default function ChatInterface({ currentChat, onChatUpdate, onChatCreated
 
       {/* Floating typing indicator just above the input */}
       {isLoading && (
-        <div className="fixed bottom-28 left-4 right-4 z-20 flex justify-start">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-card border border-border shadow-sm text-xs text-muted-foreground">
-            <span>AI is typing</span>
-            <span className="typing-dots" aria-hidden>
-              <span className="dot" />
-              <span className="dot" />
-              <span className="dot" />
-            </span>
+        <div className="fixed bottom-28 inset-x-0 z-20 flex justify-center pointer-events-none">
+          <div className="pointer-events-auto w-full max-w-[720px] px-3">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-card border border-border shadow-sm text-xs text-muted-foreground">
+              <span>AI is typing</span>
+              <span className="typing-dots" aria-hidden>
+                <span className="dot" />
+                <span className="dot" />
+                <span className="dot" />
+              </span>
+            </div>
           </div>
         </div>
       )}
 
       {/* Floating chat bubble input */}
-      <div className="fixed bottom-3 left-3 right-3 z-20" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-        <form onSubmit={handleSubmit} className="space-y-2">
+      <div
+        className={cn(
+          'fixed inset-x-0 z-20 flex justify-center px-3',
+          isEmptyThread ? 'top-[30vh]' : 'bottom-3'
+        )}
+        style={{ paddingBottom: isEmptyThread ? undefined : 'env(safe-area-inset-bottom)' }}
+      >
+        <form onSubmit={handleSubmit} className="space-y-2 w-full max-w-[720px]">
             {attachments.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {attachments.map((file, index) => (
@@ -341,7 +352,7 @@ export default function ChatInterface({ currentChat, onChatUpdate, onChatCreated
               placeholder={isEmptyThread ? "Ask anything..." : "Type your message..."}
               className={cn(
                 "flex w-full rounded-2xl border-0 bg-transparent pl-10 pr-36 py-2.5 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0",
-                "resize-none min-h-[48px] max-h-[200px] transition-[height] duration-200 ease-out"
+                "resize-none min-h-[52px] sm:min-h-[56px] max-h-[200px] transition-[height] duration-200 ease-out"
               )}
               rows={1}
               onKeyDown={(e) => {
