@@ -21,6 +21,7 @@ export default function PeopleModal({ onClose }: PeopleModalProps) {
   const [message, setMessage] = useState('')
   const [context, setContext] = useState('')
   const [isSending, setIsSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -44,7 +45,13 @@ export default function PeopleModal({ onClose }: PeopleModalProps) {
       if (res.ok) {
         setMessage('')
         setContext('')
+        setError(null)
         onClose()
+      } else if (res.status === 401) {
+        setError('Please sign in to send messages.')
+      } else {
+        const data = await res.json().catch(() => ({}))
+        setError(data?.error || 'Failed to send message')
       }
     } finally {
       setIsSending(false)
@@ -79,6 +86,9 @@ export default function PeopleModal({ onClose }: PeopleModalProps) {
           </div>
 
           <div className="space-y-2">
+            {error && (
+              <div className="text-xs text-destructive">{error}</div>
+            )}
             <div>
               <label className="text-xs">Context (optional)</label>
               <textarea

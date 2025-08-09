@@ -20,19 +20,25 @@ export default function MessageComponent({ message }: MessageComponentProps) {
   }
 
   return (
-    <div className={cn(
-      "flex space-x-3",
-      isUser ? "justify-end" : "justify-start"
-    )}>
-      <div className={cn(
-        "flex space-x-3 max-w-[80%]",
-        isUser ? "flex-row-reverse space-x-reverse" : "flex-row"
-      )}>
+    <div
+      className={cn(
+        'flex space-x-3',
+        isUser ? 'justify-end' : 'justify-start'
+      )}
+    >
+      <div
+        className={cn(
+          'flex space-x-3 max-w-[88vw] sm:max-w-[70%] animate-fade-in',
+          isUser ? 'flex-row-reverse space-x-reverse' : 'flex-row'
+        )}
+      >
         {/* Avatar */}
-        <div className={cn(
-          "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center",
-          isUser ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-        )}>
+        <div
+          className={cn(
+            'flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center',
+            isUser ? 'bg-blue-600 text-white dark:bg-blue-500' : 'bg-muted text-muted-foreground'
+          )}
+        >
           {isUser ? (
             <User className="w-4 h-4" />
           ) : (
@@ -41,16 +47,17 @@ export default function MessageComponent({ message }: MessageComponentProps) {
         </div>
 
         {/* Message content */}
-        <div className={cn(
-          "flex flex-col space-y-1",
-          isUser ? "items-end" : "items-start"
-        )}>
-          <div className={cn(
-            "rounded-lg px-4 py-2 max-w-full relative",
-            isUser 
-              ? "bg-primary text-primary-foreground" 
-              : "bg-transparent text-foreground"
-          )}>
+        <div
+          className={cn('flex flex-col space-y-1.5', isUser ? 'items-end' : 'items-start')}
+        >
+          <div
+            className={cn(
+              'rounded-2xl px-4 py-2 max-w-full relative shadow-sm',
+              isUser
+                ? 'bg-blue-600 text-white dark:bg-blue-500'
+                : 'bg-card text-foreground border border-border'
+            )}
+          >
             {!isUser && (
               <button
                 onClick={handleCopy}

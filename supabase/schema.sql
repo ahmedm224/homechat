@@ -214,6 +214,8 @@ CREATE TABLE IF NOT EXISTS public.user_messages (
   sender_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
   recipient_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
+  sender_name TEXT,
+  read BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -225,3 +227,7 @@ CREATE POLICY IF NOT EXISTS "Sender can insert own user_messages" ON public.user
 
 CREATE POLICY IF NOT EXISTS "Sender or recipient can view user_messages" ON public.user_messages
   FOR SELECT USING (auth.uid() = sender_id OR auth.uid() = recipient_id);
+
+-- Helpful indexes
+CREATE INDEX IF NOT EXISTS idx_user_messages_recipient_id_read
+  ON public.user_messages(recipient_id, read);
