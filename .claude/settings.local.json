@@ -6,7 +6,12 @@
       "Bash(npm install)",
       "Bash(npm install:*)",
       "Bash(cat:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(npm pkg set:*)",
+      "Bash(curl:*)",
+      "Bash(npx wrangler pages deploy:*)",
+      "Bash(npx wrangler pages deployment list:*)"
     ]
   }
 }
