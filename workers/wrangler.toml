@@ -1,0 +1,23 @@
+name = "chathome-api"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[vars]
+ENVIRONMENT = "development"
+
+# Secrets (set via wrangler secret put):
+# - OPENAI_API_KEY
+# - SCRAPINGDOG_API_KEY
+# - JWT_SECRET
+
+[[d1_databases]]
+binding = "DB"
+database_name = "chathome"
+database_id = "your-database-id-here"
+
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "chathome-files"
+
+[env.production]
+vars = { ENVIRONMENT = "production" }
