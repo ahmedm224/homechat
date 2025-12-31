@@ -34,6 +34,23 @@ const loginSchema = z.object({
 auth.post('/register', zValidator('json', registerSchema), async (c) => {
   const { username, password } = c.req.valid('json')
 
+  // Check if this is the first user (will be admin)
+  const userCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM users').first<{
+    count: number
+  }>()
+  const isFirstUser = !userCount || userCount.count === 0
+
+  // Check if registration is allowed (unless first user)
+  if (!isFirstUser) {
+    const allowRegistration = await c.env.DB.prepare(
+      "SELECT value FROM settings WHERE key = 'allow_registration'"
+    ).first<{ value: string }>()
+
+    if (allowRegistration?.value === 'false') {
+      return c.json({ error: 'Registration is disabled. Please contact an administrator.' }, 403)
+    }
+  }
+
   // Check if username already exists
   const existing = await c.env.DB.prepare(
     'SELECT id FROM users WHERE username = ?'
@@ -44,12 +61,6 @@ auth.post('/register', zValidator('json', registerSchema), async (c) => {
   if (existing) {
     return c.json({ error: 'Username already exists' }, 400)
   }
-
-  // Check if this is the first user (will be admin)
-  const userCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM users').first<{
-    count: number
-  }>()
-  const isFirstUser = !userCount || userCount.count === 0
 
   const id = crypto.randomUUID()
   const passwordHash = await hashPassword(password)

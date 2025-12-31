@@ -1,17 +1,20 @@
-import { useEffect } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
 import { useChat } from '@/hooks/useChat'
 import { useAuth } from '@/contexts/AuthContext'
-import { chatApi } from '@/lib/api'
+import { chatApi, type Conversation } from '@/lib/api'
 import { Spinner } from '@/components/ui/spinner'
 
 interface ChatWindowProps {
   conversationId: string | null
+  onConversationCreated?: (id: string) => void
+  createConversation?: () => Promise<Conversation | null>
 }
 
-export function ChatWindow({ conversationId }: ChatWindowProps) {
+export function ChatWindow({ conversationId, onConversationCreated, createConversation }: ChatWindowProps) {
   const { token } = useAuth()
+  const [isCreatingConversation, setIsCreatingConversation] = useState(false)
   const { messages, isLoading, isStreaming, error, loadConversation, sendMessage, clearMessages } =
     useChat(conversationId)
 
@@ -33,6 +36,32 @@ export function ChatWindow({ conversationId }: ChatWindowProps) {
     }
   }
 
+  const handleSend = useCallback(async (
+    content: string,
+    model: 'fast' | 'thinking',
+    options?: { attachments?: string[]; webSearch?: boolean }
+  ) => {
+    // If no conversation exists, create one first
+    if (!conversationId && createConversation) {
+      setIsCreatingConversation(true)
+      try {
+        const newConversation = await createConversation()
+        if (newConversation) {
+          onConversationCreated?.(newConversation.id)
+          // Wait a tick for the conversation ID to propagate
+          setTimeout(() => {
+            sendMessage(content, model, options)
+          }, 100)
+        }
+      } finally {
+        setIsCreatingConversation(false)
+      }
+      return
+    }
+
+    sendMessage(content, model, options)
+  }, [conversationId, createConversation, onConversationCreated, sendMessage])
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -50,8 +79,8 @@ export function ChatWindow({ conversationId }: ChatWindowProps) {
         </div>
       )}
       <ChatInput
-        onSend={sendMessage}
-        disabled={isStreaming || !conversationId}
+        onSend={handleSend}
+        disabled={isStreaming || isCreatingConversation}
         onFileUpload={handleFileUpload}
       />
     </div>

@@ -31,7 +31,11 @@ export default function ChatPage() {
         onNewConversation={createConversation}
       />
       <main className="flex-1 flex flex-col min-h-0 lg:pl-0 pl-0">
-        <ChatWindow conversationId={selectedConversation} />
+        <ChatWindow
+          conversationId={selectedConversation}
+          onConversationCreated={setSelectedConversation}
+          createConversation={createConversation}
+        />
       </main>
     </div>
   )

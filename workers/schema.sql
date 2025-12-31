@@ -40,6 +40,16 @@ CREATE TABLE IF NOT EXISTS user_memory (
   UNIQUE(user_id, key)
 );
 
+-- System settings table
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Default settings
+INSERT OR IGNORE INTO settings (key, value) VALUES ('allow_registration', 'true');
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_updated_at ON conversations(updated_at DESC);

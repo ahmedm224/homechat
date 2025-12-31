@@ -202,8 +202,21 @@ export const adminApi = {
       stats: { conversations: number; messages: number }
     }>(`/api/admin/users/${id}`, { token }),
 
+  createUser: (token: string, username: string, password: string, role: 'adult' | 'kid') =>
+    request<{ user: { id: string; username: string; role: string }; message: string }>(
+      '/api/admin/users',
+      { method: 'POST', token, body: { username, password, role } }
+    ),
+
   updateRole: (token: string, id: string, role: 'adult' | 'kid') =>
     request(`/api/admin/users/${id}/role`, { method: 'PATCH', token, body: { role } }),
+
+  resetPassword: (token: string, id: string, password: string) =>
+    request<{ message: string }>(`/api/admin/users/${id}/password`, {
+      method: 'PATCH',
+      token,
+      body: { password },
+    }),
 
   deleteUser: (token: string, id: string) =>
     request(`/api/admin/users/${id}`, { method: 'DELETE', token }),
@@ -215,6 +228,16 @@ export const adminApi = {
       messages: number
       roleDistribution: Array<{ role: string; count: number }>
     }>('/api/admin/stats', { token }),
+
+  getSettings: (token: string) =>
+    request<{ allow_registration: boolean }>('/api/admin/settings', { token }),
+
+  updateSettings: (token: string, settings: { allow_registration?: boolean }) =>
+    request<{ message: string }>('/api/admin/settings', {
+      method: 'PATCH',
+      token,
+      body: settings,
+    }),
 }
 
 export { ApiError }

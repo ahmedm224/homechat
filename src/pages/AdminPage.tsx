@@ -6,7 +6,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
@@ -15,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { ArrowLeft, Users, MessageSquare, Trash2, Shield, Baby } from 'lucide-react'
+import { ArrowLeft, Users, MessageSquare, Trash2, Shield, Baby, Plus, Key } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import { Spinner } from '@/components/ui/spinner'
 
@@ -41,6 +43,20 @@ export default function AdminPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [deleteDialog, setDeleteDialog] = useState<User | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [allowRegistration, setAllowRegistration] = useState(true)
+
+  // Create user dialog
+  const [createDialog, setCreateDialog] = useState(false)
+  const [newUsername, setNewUsername] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [newRole, setNewRole] = useState<'adult' | 'kid'>('adult')
+  const [isCreating, setIsCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
+
+  // Reset password dialog
+  const [resetDialog, setResetDialog] = useState<User | null>(null)
+  const [resetPassword, setResetPassword] = useState('')
+  const [isResetting, setIsResetting] = useState(false)
 
   useEffect(() => {
     if (user?.role !== 'admin') {
@@ -51,12 +67,14 @@ export default function AdminPage() {
     const loadData = async () => {
       if (!token) return
       try {
-        const [usersData, statsData] = await Promise.all([
+        const [usersData, statsData, settingsData] = await Promise.all([
           adminApi.getUsers(token),
           adminApi.getStats(token),
+          adminApi.getSettings(token),
         ])
         setUsers(usersData)
         setStats(statsData)
+        setAllowRegistration(settingsData.allow_registration)
       } catch (error) {
         console.error('Failed to load admin data:', error)
       } finally {
@@ -88,6 +106,52 @@ export default function AdminPage() {
       console.error('Failed to delete user:', error)
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  const handleCreateUser = async () => {
+    if (!token) return
+    setIsCreating(true)
+    setCreateError('')
+    try {
+      const result = await adminApi.createUser(token, newUsername, newPassword, newRole)
+      setUsers((prev) => [
+        { id: result.user.id, username: result.user.username, role: result.user.role, created_at: new Date().toISOString() },
+        ...prev,
+      ])
+      setCreateDialog(false)
+      setNewUsername('')
+      setNewPassword('')
+      setNewRole('adult')
+    } catch (error: any) {
+      setCreateError(error.message || 'Failed to create user')
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  const handleResetPassword = async () => {
+    if (!token || !resetDialog) return
+    setIsResetting(true)
+    try {
+      await adminApi.resetPassword(token, resetDialog.id, resetPassword)
+      setResetDialog(null)
+      setResetPassword('')
+    } catch (error) {
+      console.error('Failed to reset password:', error)
+    } finally {
+      setIsResetting(false)
+    }
+  }
+
+  const handleToggleRegistration = async (checked: boolean) => {
+    if (!token) return
+    setAllowRegistration(checked)
+    try {
+      await adminApi.updateSettings(token, { allow_registration: checked })
+    } catch (error) {
+      console.error('Failed to update settings:', error)
+      setAllowRegistration(!checked) // Revert on error
     }
   }
 
@@ -156,11 +220,42 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* Users */}
+          {/* Settings */}
           <Card>
             <CardHeader>
-              <CardTitle>Users</CardTitle>
-              <CardDescription>Manage user roles and access</CardDescription>
+              <CardTitle>Settings</CardTitle>
+              <CardDescription>Configure system settings</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="allow-registration" className="font-medium">
+                    Allow Public Registration
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    When disabled, only admins can create new users
+                  </p>
+                </div>
+                <Switch
+                  id="allow-registration"
+                  checked={allowRegistration}
+                  onCheckedChange={handleToggleRegistration}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Users */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Users</CardTitle>
+                <CardDescription>Manage user roles and access</CardDescription>
+              </div>
+              <Button onClick={() => setCreateDialog(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Create User
+              </Button>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
@@ -217,6 +312,14 @@ export default function AdminPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            onClick={() => setResetDialog(u)}
+                            title="Reset password"
+                          >
+                            <Key className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={() => setDeleteDialog(u)}
                             className="text-destructive hover:text-destructive"
                           >
@@ -251,6 +354,113 @@ export default function AdminPage() {
             </Button>
             <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
               {isDeleting ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create user dialog */}
+      <Dialog open={createDialog} onOpenChange={(open) => {
+        setCreateDialog(open)
+        if (!open) {
+          setNewUsername('')
+          setNewPassword('')
+          setNewRole('adult')
+          setCreateError('')
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New User</DialogTitle>
+            <DialogDescription>
+              Create a new user account with a username and password.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                value={newUsername}
+                onChange={(e) => setNewUsername(e.target.value)}
+                placeholder="Enter username"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Enter password"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="role">Role</Label>
+              <Select value={newRole} onValueChange={(v) => setNewRole(v as 'adult' | 'kid')}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="adult">Adult</SelectItem>
+                  <SelectItem value="kid">Kid</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {createError && (
+              <p className="text-sm text-destructive">{createError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateUser}
+              disabled={isCreating || !newUsername || !newPassword}
+            >
+              {isCreating ? 'Creating...' : 'Create User'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset password dialog */}
+      <Dialog open={!!resetDialog} onOpenChange={(open) => {
+        if (!open) {
+          setResetDialog(null)
+          setResetPassword('')
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset Password</DialogTitle>
+            <DialogDescription>
+              Set a new password for <strong>{resetDialog?.username}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-password">New Password</Label>
+              <Input
+                id="new-password"
+                type="password"
+                value={resetPassword}
+                onChange={(e) => setResetPassword(e.target.value)}
+                placeholder="Enter new password"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetDialog(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleResetPassword}
+              disabled={isResetting || !resetPassword || resetPassword.length < 6}
+            >
+              {isResetting ? 'Resetting...' : 'Reset Password'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import { authMiddleware, adminMiddleware } from '../middleware/auth'
+import { hashPassword } from '../lib/password'
 import type { Env, User, JWTPayload } from '../types'
 
 type Variables = {
@@ -155,6 +156,121 @@ admin.get('/stats', async (c) => {
     messages: messageCount?.count || 0,
     roleDistribution: roleDistribution.results,
   })
+})
+
+// Create user schema
+const createUserSchema = z.object({
+  username: z
+    .string()
+    .min(3, 'Username must be at least 3 characters')
+    .max(20, 'Username must be at most 20 characters')
+    .regex(/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers, and underscores'),
+  password: z
+    .string()
+    .min(6, 'Password must be at least 6 characters')
+    .max(100, 'Password must be at most 100 characters'),
+  role: z.enum(['adult', 'kid']).default('adult'),
+})
+
+// Create new user (admin only)
+admin.post('/users', zValidator('json', createUserSchema), async (c) => {
+  const { username, password, role } = c.req.valid('json')
+
+  // Check if username already exists
+  const existing = await c.env.DB.prepare('SELECT id FROM users WHERE username = ?')
+    .bind(username)
+    .first()
+
+  if (existing) {
+    return c.json({ error: 'Username already exists' }, 400)
+  }
+
+  const id = crypto.randomUUID()
+  const passwordHash = await hashPassword(password)
+
+  await c.env.DB.prepare(
+    'INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)'
+  )
+    .bind(id, username, passwordHash, role)
+    .run()
+
+  return c.json({
+    user: { id, username, role },
+    message: 'User created successfully',
+  })
+})
+
+// Reset password schema
+const resetPasswordSchema = z.object({
+  password: z
+    .string()
+    .min(6, 'Password must be at least 6 characters')
+    .max(100, 'Password must be at most 100 characters'),
+})
+
+// Reset user password (admin only)
+admin.patch('/users/:id/password', zValidator('json', resetPasswordSchema), async (c) => {
+  const id = c.req.param('id')
+  const { password } = c.req.valid('json')
+
+  // Check if user exists
+  const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?')
+    .bind(id)
+    .first<User>()
+
+  if (!user) {
+    return c.json({ error: 'User not found' }, 404)
+  }
+
+  const passwordHash = await hashPassword(password)
+
+  await c.env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?')
+    .bind(passwordHash, id)
+    .run()
+
+  return c.json({ message: 'Password reset successfully' })
+})
+
+// Get settings
+admin.get('/settings', async (c) => {
+  const settings = await c.env.DB.prepare('SELECT key, value FROM settings').all<{
+    key: string
+    value: string
+  }>()
+
+  const result: Record<string, string | boolean> = {}
+  for (const setting of settings.results) {
+    // Convert string 'true'/'false' to boolean
+    if (setting.value === 'true' || setting.value === 'false') {
+      result[setting.key] = setting.value === 'true'
+    } else {
+      result[setting.key] = setting.value
+    }
+  }
+
+  return c.json(result)
+})
+
+// Update settings schema
+const updateSettingsSchema = z.object({
+  allow_registration: z.boolean().optional(),
+})
+
+// Update settings
+admin.patch('/settings', zValidator('json', updateSettingsSchema), async (c) => {
+  const updates = c.req.valid('json')
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (value !== undefined) {
+      await c.env.DB.prepare(
+        'INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = CURRENT_TIMESTAMP'
+      )
+        .bind(key, String(value), String(value))
+        .run()
+    }
+  }
+
+  return c.json({ message: 'Settings updated' })
 })
 
 export default admin
