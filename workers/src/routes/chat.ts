@@ -1,6 +1,9 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
+import { extractText } from 'unpdf'
+import * as mammoth from 'mammoth'
+import * as XLSX from 'xlsx'
 import { streamChatCompletion, getSystemPrompt } from '../lib/openai'
 import { webSearch, formatSearchResults } from '../lib/search'
 import { authMiddleware } from '../middleware/auth'
@@ -170,6 +173,7 @@ chat.post('/conversations/:id/messages', zValidator('json', messageSchema), asyn
 
   // Process attachments
   let attachmentContent: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> = []
+  let hasImageAttachment = false
   if (attachments && attachments.length > 0) {
     for (const key of attachments) {
       try {
@@ -177,23 +181,113 @@ chat.post('/conversations/:id/messages', zValidator('json', messageSchema), asyn
         if (!file) continue
 
         const contentType = file.httpMetadata?.contentType || ''
+        const fileName = key.split('/').pop() || 'file'
+        const fileExt = fileName.split('.').pop()?.toLowerCase() || ''
 
-        if (contentType.startsWith('image/')) {
-          // For images, convert to base64 data URL
+        // Image formats supported by OpenAI Vision
+        const imageFormats = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'tif', 'heic', 'heif']
+        const isImage = contentType.startsWith('image/') || imageFormats.includes(fileExt)
+
+        if (isImage) {
+          // For images, convert to base64 data URL for vision API
+          hasImageAttachment = true
           const arrayBuffer = await file.arrayBuffer()
-          const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
-          const dataUrl = `data:${contentType};base64,${base64}`
+          const bytes = new Uint8Array(arrayBuffer)
+          let binary = ''
+          for (let i = 0; i < bytes.length; i++) {
+            binary += String.fromCharCode(bytes[i])
+          }
+          const base64 = btoa(binary)
+          // Use content type or default to jpeg
+          const mimeType = contentType || `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`
+          const dataUrl = `data:${mimeType};base64,${base64}`
           attachmentContent.push({
             type: 'image_url',
             image_url: { url: dataUrl }
           })
-        } else {
-          // For text files (txt, md, json, csv, pdf), extract text
+        } else if (contentType === 'application/pdf' || fileExt === 'pdf') {
+          // For PDFs, extract text using unpdf
+          try {
+            const arrayBuffer = await file.arrayBuffer()
+            const { text } = await extractText(arrayBuffer, { mergePages: true })
+            if (text && text.trim()) {
+              attachmentContent.push({
+                type: 'text',
+                text: `[PDF Document: ${fileName}]\n${text}\n[End of PDF]`
+              })
+            } else {
+              attachmentContent.push({
+                type: 'text',
+                text: `[PDF Document: ${fileName}]\n(Could not extract text - PDF may be scanned/image-based)\n[End of PDF]`
+              })
+            }
+          } catch (pdfError) {
+            console.error('PDF extraction error:', pdfError)
+            attachmentContent.push({
+              type: 'text',
+              text: `[PDF Document: ${fileName}]\n(Failed to extract text from PDF)\n[End of PDF]`
+            })
+          }
+        } else if (fileExt === 'docx' || contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+          // For Word documents, extract text using mammoth
+          try {
+            const arrayBuffer = await file.arrayBuffer()
+            const result = await mammoth.extractRawText({ arrayBuffer })
+            if (result.value && result.value.trim()) {
+              attachmentContent.push({
+                type: 'text',
+                text: `[Word Document: ${fileName}]\n${result.value}\n[End of Document]`
+              })
+            } else {
+              attachmentContent.push({
+                type: 'text',
+                text: `[Word Document: ${fileName}]\n(Document appears to be empty)\n[End of Document]`
+              })
+            }
+          } catch (docError) {
+            console.error('Word document extraction error:', docError)
+            attachmentContent.push({
+              type: 'text',
+              text: `[Word Document: ${fileName}]\n(Failed to extract text from Word document)\n[End of Document]`
+            })
+          }
+        } else if (['xlsx', 'xls'].includes(fileExt) || contentType.includes('spreadsheet')) {
+          // For Excel files, extract data using xlsx
+          try {
+            const arrayBuffer = await file.arrayBuffer()
+            const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+            let excelText = ''
+            for (const sheetName of workbook.SheetNames) {
+              const sheet = workbook.Sheets[sheetName]
+              const csv = XLSX.utils.sheet_to_csv(sheet)
+              excelText += `[Sheet: ${sheetName}]\n${csv}\n\n`
+            }
+            attachmentContent.push({
+              type: 'text',
+              text: `[Excel Spreadsheet: ${fileName}]\n${excelText}[End of Spreadsheet]`
+            })
+          } catch (xlsError) {
+            console.error('Excel extraction error:', xlsError)
+            attachmentContent.push({
+              type: 'text',
+              text: `[Excel Spreadsheet: ${fileName}]\n(Failed to extract data from Excel file)\n[End of Spreadsheet]`
+            })
+          }
+        } else if (
+          contentType.startsWith('text/') ||
+          ['txt', 'md', 'json', 'csv', 'xml', 'html', 'css', 'js', 'ts', 'tsx', 'jsx', 'py', 'yaml', 'yml', 'rtf', 'log', 'ini', 'cfg', 'conf', 'sh', 'bash', 'sql', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs', 'php', 'rb', 'swift', 'kt'].includes(fileExt)
+        ) {
+          // For text-based files, read as text
           const text = await file.text()
-          const fileName = key.split('/').pop() || 'file'
           attachmentContent.push({
             type: 'text',
-            text: `[Attached file: ${fileName}]\n${text}\n[End of file]`
+            text: `[File: ${fileName}]\n${text}\n[End of file]`
+          })
+        } else {
+          // For other file types, inform the user
+          attachmentContent.push({
+            type: 'text',
+            text: `[File: ${fileName}]\n(Unsupported file type: ${contentType || fileExt}. Cannot extract content.)\n[End of file]`
           })
         }
       } catch (error) {
@@ -203,9 +297,10 @@ chat.post('/conversations/:id/messages', zValidator('json', messageSchema), asyn
   }
 
   // Prepare messages for OpenAI
-  const messages = history.results.map((m) => ({
+  type MessageContent = string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>
+  const messages: Array<{ role: 'user' | 'assistant'; content: MessageContent }> = history.results.map((m) => ({
     role: m.role as 'user' | 'assistant',
-    content: m.content,
+    content: m.content as MessageContent,
   }))
 
   // Build user message content
@@ -234,10 +329,13 @@ chat.post('/conversations/:id/messages', zValidator('json', messageSchema), asyn
   c.executionCtx.waitUntil(
     (async () => {
       try {
+        // Use fast model for images (vision is only supported on gpt-4.1-mini)
+        const effectiveModel = hasImageAttachment ? 'fast' : model
         for await (const chunk of streamChatCompletion({
           messages,
-          modelType: model,
+          modelType: effectiveModel,
           userRole: userRecord.role,
+          username: userRecord.username,
           apiKey: c.env.OPENAI_API_KEY,
           webSearchContext,
         })) {
@@ -249,7 +347,7 @@ chat.post('/conversations/:id/messages', zValidator('json', messageSchema), asyn
         await c.env.DB.prepare(
           'INSERT INTO messages (id, conversation_id, role, content, model) VALUES (?, ?, ?, ?, ?)'
         )
-          .bind(assistantMessageId, conversationId, 'assistant', fullResponse, model)
+          .bind(assistantMessageId, conversationId, 'assistant', fullResponse, effectiveModel)
           .run()
 
         // Update conversation title if it's the first message

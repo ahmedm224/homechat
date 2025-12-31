@@ -1,12 +1,14 @@
 import type { ModelType } from '../types'
 
-const ADULT_SYSTEM_PROMPT = `You are a helpful AI assistant.
+const ADULT_SYSTEM_PROMPT = `You are a helpful AI assistant for {username}.
+- Address the user by their name naturally in conversation
 - Provide factual, logical responses
 - Do not offer emotional support or therapy
 - Focus on accuracy and practical solutions
 - Be direct and concise`
 
-const KID_SYSTEM_PROMPT = `You are a helpful AI assistant for children.
+const KID_SYSTEM_PROMPT = `You are a helpful AI assistant for {username}, a child.
+- Address the user by their name naturally in conversation
 - Use simple, age-appropriate language
 - Provide factual, educational responses
 - Do not discuss adult topics, violence, or inappropriate content
@@ -49,21 +51,23 @@ interface OpenAIStreamOptions {
   messages: ChatMessage[]
   modelType: ModelType
   userRole: 'admin' | 'adult' | 'kid'
+  username: string
   apiKey: string
   webSearchContext?: string
 }
 
-export function getSystemPrompt(userRole: 'admin' | 'adult' | 'kid'): string {
-  return userRole === 'kid' ? KID_SYSTEM_PROMPT : ADULT_SYSTEM_PROMPT
+export function getSystemPrompt(userRole: 'admin' | 'adult' | 'kid', username: string): string {
+  const template = userRole === 'kid' ? KID_SYSTEM_PROMPT : ADULT_SYSTEM_PROMPT
+  return template.replace('{username}', username)
 }
 
 export async function* streamChatCompletion(
   options: OpenAIStreamOptions
 ): AsyncGenerator<string, void, unknown> {
-  const { messages, modelType, userRole, apiKey, webSearchContext } = options
+  const { messages, modelType, userRole, username, apiKey, webSearchContext } = options
   const config = MODEL_CONFIG[modelType]
 
-  const systemPrompt = getSystemPrompt(userRole)
+  const systemPrompt = getSystemPrompt(userRole, username)
   let fullSystemPrompt = systemPrompt
 
   if (webSearchContext) {

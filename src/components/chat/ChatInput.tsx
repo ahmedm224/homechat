@@ -128,7 +128,7 @@ export function ChatInput({ onSend, disabled, onFileUpload }: ChatInputProps) {
                 type="file"
                 onChange={handleFileSelect}
                 className="hidden"
-                accept="image/*,.pdf,.txt,.md,.json,.csv"
+                accept="image/*,.pdf,.txt,.md,.json,.csv,.docx,.xlsx,.xls,.xml,.html,.css,.js,.ts,.py,.yaml,.yml"
               />
               <Button
                 type="button"
