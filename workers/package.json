@@ -11,7 +11,7 @@
   "dependencies": {
     "@hono/zod-validator": "^0.4.0",
     "hono": "^4.6.0",
-    "mammoth": "^1.11.0",
+    "jszip": "^3.10.1",
     "unpdf": "^1.4.0",
     "xlsx": "^0.18.5",
     "zod": "^3.23.0"

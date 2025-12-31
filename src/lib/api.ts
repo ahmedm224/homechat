@@ -105,7 +105,7 @@ export const chatApi = {
     conversationId: string,
     content: string,
     model: 'fast' | 'thinking',
-    options?: { attachments?: string[]; webSearch?: boolean }
+    options?: { attachments?: string[]; webSearch?: boolean; signal?: AbortSignal }
   ): AsyncGenerator<{ content?: string; done?: boolean; messageId?: string; error?: string }> {
     const response = await fetch(`${API_URL}/api/chat/conversations/${conversationId}/messages`, {
       method: 'POST',
@@ -119,6 +119,7 @@ export const chatApi = {
         attachments: options?.attachments,
         webSearch: options?.webSearch,
       }),
+      signal: options?.signal,
     })
 
     if (!response.ok) {

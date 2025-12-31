@@ -15,7 +15,7 @@ interface ChatWindowProps {
 export function ChatWindow({ conversationId, onConversationCreated, createConversation }: ChatWindowProps) {
   const { token } = useAuth()
   const [isCreatingConversation, setIsCreatingConversation] = useState(false)
-  const { messages, isLoading, isStreaming, error, loadConversation, sendMessage, clearMessages } =
+  const { messages, isLoading, isStreaming, error, loadConversation, sendMessage, stopStreaming, clearMessages } =
     useChat(conversationId)
 
   useEffect(() => {
@@ -81,6 +81,8 @@ export function ChatWindow({ conversationId, onConversationCreated, createConver
       <ChatInput
         onSend={handleSend}
         disabled={isStreaming || isCreatingConversation}
+        isStreaming={isStreaming}
+        onStop={stopStreaming}
         onFileUpload={handleFileUpload}
       />
     </div>

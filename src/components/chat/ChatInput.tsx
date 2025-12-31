@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ModelSelector } from './ModelSelector'
-import { Send, Paperclip, Globe, X } from 'lucide-react'
+import { Send, Paperclip, Globe, X, Square } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type ModelType = 'fast' | 'thinking'
@@ -14,10 +14,12 @@ interface ChatInputProps {
     options?: { attachments?: string[]; webSearch?: boolean }
   ) => void
   disabled?: boolean
+  isStreaming?: boolean
+  onStop?: () => void
   onFileUpload?: (file: File) => Promise<{ key: string; name: string } | null>
 }
 
-export function ChatInput({ onSend, disabled, onFileUpload }: ChatInputProps) {
+export function ChatInput({ onSend, disabled, isStreaming, onStop, onFileUpload }: ChatInputProps) {
   const [content, setContent] = useState('')
   const [model, setModel] = useState<ModelType>('fast')
   const [webSearch, setWebSearch] = useState(false)
@@ -155,9 +157,20 @@ export function ChatInput({ onSend, disabled, onFileUpload }: ChatInputProps) {
               </Button>
             </div>
           </div>
-          <Button type="submit" size="icon" disabled={disabled || !content.trim()}>
-            <Send className="h-4 w-4" />
-          </Button>
+          {isStreaming ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="destructive"
+              onClick={onStop}
+            >
+              <Square className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button type="submit" size="icon" disabled={disabled || !content.trim()}>
+              <Send className="h-4 w-4" />
+            </Button>
+          )}
         </div>
 
         {/* Model selector and web search toggle */}

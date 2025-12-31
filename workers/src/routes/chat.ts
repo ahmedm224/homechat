@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import { extractText } from 'unpdf'
-import * as mammoth from 'mammoth'
+import JSZip from 'jszip'
 import * as XLSX from 'xlsx'
 import { streamChatCompletion, getSystemPrompt } from '../lib/openai'
 import { webSearch, formatSearchResults } from '../lib/search'
@@ -229,19 +229,45 @@ chat.post('/conversations/:id/messages', zValidator('json', messageSchema), asyn
             })
           }
         } else if (fileExt === 'docx' || contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-          // For Word documents, extract text using mammoth
+          // For Word documents, extract text using JSZip
           try {
             const arrayBuffer = await file.arrayBuffer()
-            const result = await mammoth.extractRawText({ arrayBuffer })
-            if (result.value && result.value.trim()) {
-              attachmentContent.push({
-                type: 'text',
-                text: `[Word Document: ${fileName}]\n${result.value}\n[End of Document]`
-              })
+            const zip = await JSZip.loadAsync(arrayBuffer)
+            const documentXml = await zip.file('word/document.xml')?.async('text')
+
+            if (documentXml) {
+              // Extract text from XML by removing tags and cleaning up
+              const text = documentXml
+                // Replace paragraph and line break tags with newlines
+                .replace(/<\/w:p>/g, '\n')
+                .replace(/<w:br[^>]*>/g, '\n')
+                // Remove all XML tags
+                .replace(/<[^>]+>/g, '')
+                // Decode common XML entities
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"')
+                .replace(/&apos;/g, "'")
+                // Clean up extra whitespace
+                .replace(/\n\s*\n/g, '\n\n')
+                .trim()
+
+              if (text) {
+                attachmentContent.push({
+                  type: 'text',
+                  text: `[Word Document: ${fileName}]\n${text}\n[End of Document]`
+                })
+              } else {
+                attachmentContent.push({
+                  type: 'text',
+                  text: `[Word Document: ${fileName}]\n(Document appears to be empty)\n[End of Document]`
+                })
+              }
             } else {
               attachmentContent.push({
                 type: 'text',
-                text: `[Word Document: ${fileName}]\n(Document appears to be empty)\n[End of Document]`
+                text: `[Word Document: ${fileName}]\n(Could not find document content)\n[End of Document]`
               })
             }
           } catch (docError) {

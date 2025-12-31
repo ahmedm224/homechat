@@ -19,6 +19,7 @@ export function useChat(conversationId: string | null) {
   const abortControllerRef = useRef<AbortController | null>(null)
   const pendingTextRef = useRef('')
   const isTypingRef = useRef(false)
+  const currentAssistantIdRef = useRef<string | null>(null)
 
   const loadConversation = useCallback(async (id: string) => {
     if (!token) return
@@ -44,6 +45,12 @@ export function useChat(conversationId: string | null) {
     ) => {
       if (!token || !conversationId) return
 
+      // Cancel any existing request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+      abortControllerRef.current = new AbortController()
+
       setError(null)
       setIsStreaming(true)
       pendingTextRef.current = ''
@@ -63,6 +70,7 @@ export function useChat(conversationId: string | null) {
 
       // Add placeholder for assistant message
       const assistantMessageId = crypto.randomUUID()
+      currentAssistantIdRef.current = assistantMessageId
       const assistantMessage: Message = {
         id: assistantMessageId,
         conversation_id: conversationId,
@@ -101,7 +109,7 @@ export function useChat(conversationId: string | null) {
           conversationId,
           content,
           model,
-          options
+          { ...options, signal: abortControllerRef.current.signal }
         )) {
           if (chunk.content) {
             pendingTextRef.current += chunk.content
@@ -128,15 +136,39 @@ export function useChat(conversationId: string | null) {
           await sleep(50)
         }
       } catch (err) {
+        // Don't show error or remove message if aborted by user
+        if (err instanceof Error && err.name === 'AbortError') {
+          // Flush any pending text immediately when stopped
+          if (pendingTextRef.current.length > 0) {
+            const remainingText = pendingTextRef.current
+            pendingTextRef.current = ''
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantMessageId
+                  ? { ...m, content: m.content + remainingText }
+                  : m
+              )
+            )
+          }
+          return
+        }
         // Remove the failed assistant message
         setMessages((prev) => prev.filter((m) => m.id !== assistantMessageId))
         setError(err instanceof Error ? err.message : 'Failed to send message')
       } finally {
         setIsStreaming(false)
+        currentAssistantIdRef.current = null
+        abortControllerRef.current = null
       }
     },
     [token, conversationId]
   )
+
+  const stopStreaming = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+  }, [])
 
   const clearMessages = useCallback(() => {
     setMessages([])
@@ -150,6 +182,7 @@ export function useChat(conversationId: string | null) {
     error,
     loadConversation,
     sendMessage,
+    stopStreaming,
     clearMessages,
     setMessages,
   }
