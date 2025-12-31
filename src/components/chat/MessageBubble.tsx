@@ -24,7 +24,7 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
             <User className="h-4 w-4" />
           </AvatarFallback>
         ) : (
-          <AvatarImage src="/logo.png" alt="AI" className="rounded-lg" />
+          <AvatarImage src="/aichatlogo.jpg" alt="AI" className="rounded-lg" />
         )}
       </Avatar>
       <div

@@ -168,12 +168,59 @@ chat.post('/conversations/:id/messages', zValidator('json', messageSchema), asyn
     }
   }
 
+  // Process attachments
+  let attachmentContent: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> = []
+  if (attachments && attachments.length > 0) {
+    for (const key of attachments) {
+      try {
+        const file = await c.env.FILES.get(key)
+        if (!file) continue
+
+        const contentType = file.httpMetadata?.contentType || ''
+
+        if (contentType.startsWith('image/')) {
+          // For images, convert to base64 data URL
+          const arrayBuffer = await file.arrayBuffer()
+          const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
+          const dataUrl = `data:${contentType};base64,${base64}`
+          attachmentContent.push({
+            type: 'image_url',
+            image_url: { url: dataUrl }
+          })
+        } else {
+          // For text files (txt, md, json, csv, pdf), extract text
+          const text = await file.text()
+          const fileName = key.split('/').pop() || 'file'
+          attachmentContent.push({
+            type: 'text',
+            text: `[Attached file: ${fileName}]\n${text}\n[End of file]`
+          })
+        }
+      } catch (error) {
+        console.error('Error processing attachment:', error)
+      }
+    }
+  }
+
   // Prepare messages for OpenAI
   const messages = history.results.map((m) => ({
     role: m.role as 'user' | 'assistant',
     content: m.content,
   }))
-  messages.push({ role: 'user' as const, content })
+
+  // Build user message content
+  let userMessageContent: string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>
+  if (attachmentContent.length > 0) {
+    // Use array format for multimodal content
+    userMessageContent = [
+      { type: 'text' as const, text: content },
+      ...attachmentContent
+    ]
+  } else {
+    userMessageContent = content
+  }
+
+  messages.push({ role: 'user' as const, content: userMessageContent })
 
   // Create streaming response
   const stream = new TransformStream()

@@ -26,9 +26,23 @@ const MODEL_CONFIG = {
   },
 } as const
 
+interface TextContent {
+  type: 'text'
+  text: string
+}
+
+interface ImageContent {
+  type: 'image_url'
+  image_url: {
+    url: string
+  }
+}
+
+type MessageContent = string | Array<TextContent | ImageContent>
+
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
-  content: string
+  content: MessageContent
 }
 
 interface OpenAIStreamOptions {

@@ -70,7 +70,7 @@ export function Sidebar({
       {/* Header with Logo and Theme Toggle */}
       <div className="p-3 flex items-center justify-between border-b">
         <div className="flex items-center gap-2">
-          <img src="/logo.png" alt="ChatHome" className="h-9 w-9 rounded-xl" />
+          <img src="/aichatlogo.jpg" alt="ChatHome" className="h-9 w-9 rounded-xl" />
           <span className="text-lg font-semibold">Family</span>
         </div>
         <div className="flex items-center gap-1">
@@ -159,7 +159,7 @@ export function Sidebar({
           <Menu className="h-5 w-5" />
         </Button>
         <div className="flex items-center gap-2">
-          <img src="/logo.png" alt="ChatHome" className="h-8 w-8 rounded-lg" />
+          <img src="/aichatlogo.jpg" alt="ChatHome" className="h-8 w-8 rounded-lg" />
           <span className="font-semibold">Family</span>
         </div>
         <Button variant="ghost" size="icon" onClick={toggleTheme}>
