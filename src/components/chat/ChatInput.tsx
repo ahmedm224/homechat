@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ModelSelector } from './ModelSelector'
@@ -35,6 +35,12 @@ export function ChatInput({ onSend, disabled, onFileUpload }: ChatInputProps) {
     }
   }, [content])
 
+  const toggleWebSearch = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setWebSearch(prev => !prev)
+  }, [])
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!content.trim() || disabled) return
@@ -45,7 +51,7 @@ export function ChatInput({ onSend, disabled, onFileUpload }: ChatInputProps) {
     })
     setContent('')
     setAttachments([])
-    setWebSearch(false)
+    // Don't reset webSearch - let user keep it on if they want
     textareaRef.current?.focus()
   }
 
@@ -136,10 +142,13 @@ export function ChatInput({ onSend, disabled, onFileUpload }: ChatInputProps) {
               </Button>
               <Button
                 type="button"
-                variant="ghost"
+                variant={webSearch ? "default" : "ghost"}
                 size="icon"
-                className={cn('h-8 w-8', webSearch && 'text-primary')}
-                onClick={() => setWebSearch(!webSearch)}
+                className={cn(
+                  'h-8 w-8 transition-all',
+                  webSearch && 'bg-primary text-primary-foreground'
+                )}
+                onClick={toggleWebSearch}
                 disabled={disabled}
               >
                 <Globe className="h-4 w-4" />
@@ -151,15 +160,23 @@ export function ChatInput({ onSend, disabled, onFileUpload }: ChatInputProps) {
           </Button>
         </div>
 
-        {/* Model selector and web search indicator */}
-        <div className="flex items-center justify-between">
+        {/* Model selector and web search toggle */}
+        <div className="flex items-center justify-between gap-2">
           <ModelSelector model={model} onChange={setModel} disabled={disabled} />
-          {webSearch && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
-              <Globe className="h-3 w-3" />
-              Web search enabled
-            </span>
-          )}
+          <button
+            type="button"
+            onClick={toggleWebSearch}
+            disabled={disabled}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all',
+              webSearch
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-muted-foreground hover:bg-muted/80'
+            )}
+          >
+            <Globe className="h-3.5 w-3.5" />
+            Web {webSearch ? 'ON' : 'OFF'}
+          </button>
         </div>
       </form>
     </div>

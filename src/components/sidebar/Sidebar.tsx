@@ -16,18 +16,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useConversations } from '@/hooks/useConversations'
 import { cn } from '@/lib/utils'
-import {
-  Plus,
-  Menu,
-  X,
-  Sun,
-  Moon,
-  Monitor,
-  LogOut,
-  Settings,
-  User,
-  Shield,
-} from 'lucide-react'
+import { Plus, Menu, X, Sun, Moon, LogOut, Shield } from 'lucide-react'
 import type { Conversation } from '@/lib/api'
 
 interface SidebarProps {
@@ -43,7 +32,7 @@ export function Sidebar({
 }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false)
   const { user, logout } = useAuth()
-  const { theme, setTheme } = useTheme()
+  const { theme, setTheme, resolvedTheme } = useTheme()
   const { conversations, deleteConversation } = useConversations()
   const navigate = useNavigate()
 
@@ -72,25 +61,49 @@ export function Sidebar({
     navigate('/login')
   }
 
+  const toggleTheme = () => {
+    setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')
+  }
+
   const sidebarContent = (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="p-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold">ChatHome</h1>
-        <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setIsOpen(false)}>
-          <X className="h-5 w-5" />
-        </Button>
+      {/* Header with Logo and Theme Toggle */}
+      <div className="p-3 flex items-center justify-between border-b">
+        <div className="flex items-center gap-2">
+          <img src="/logo.png" alt="ChatHome" className="h-9 w-9 rounded-xl" />
+          <span className="text-lg font-semibold">Family</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="h-9 w-9" 
+            onClick={toggleTheme}
+          >
+            {resolvedTheme === 'dark' ? (
+              <Sun className="h-5 w-5" />
+            ) : (
+              <Moon className="h-5 w-5" />
+            )}
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="h-9 w-9 lg:hidden" 
+            onClick={() => setIsOpen(false)}
+          >
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
       </div>
 
       {/* New Chat Button */}
-      <div className="px-4 pb-4">
-        <Button onClick={handleNewChat} className="w-full" variant="outline">
-          <Plus className="h-4 w-4 mr-2" />
+      <div className="p-3">
+        <Button onClick={handleNewChat} className="w-full" size="lg">
+          <Plus className="h-5 w-5 mr-2" />
           New Chat
         </Button>
       </div>
-
-      <Separator />
 
       {/* Conversations */}
       <ConversationList
@@ -100,45 +113,24 @@ export function Sidebar({
         onDelete={handleDelete}
       />
 
-      <Separator />
-
       {/* User Menu */}
-      <div className="p-4">
+      <div className="mt-auto border-t p-3">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="w-full justify-start gap-2">
-              <Avatar className="h-8 w-8">
-                <AvatarFallback>
+            <Button variant="ghost" className="w-full justify-start gap-3 h-auto py-3">
+              <Avatar className="h-10 w-10">
+                <AvatarFallback className="text-sm">
                   {user?.username.slice(0, 2).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 text-left">
-                <div className="text-sm font-medium">{user?.username}</div>
+                <div className="font-medium">{user?.username}</div>
                 <div className="text-xs text-muted-foreground capitalize">{user?.role}</div>
               </div>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel className="font-normal text-xs text-muted-foreground">
-              Theme
-            </DropdownMenuLabel>
-            <DropdownMenuItem onClick={() => setTheme('light')}>
-              <Sun className="h-4 w-4 mr-2" />
-              Light
-              {theme === 'light' && <span className="ml-auto">✓</span>}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setTheme('dark')}>
-              <Moon className="h-4 w-4 mr-2" />
-              Dark
-              {theme === 'dark' && <span className="ml-auto">✓</span>}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setTheme('system')}>
-              <Monitor className="h-4 w-4 mr-2" />
-              System
-              {theme === 'system' && <span className="ml-auto">✓</span>}
-            </DropdownMenuItem>
             <DropdownMenuSeparator />
             {user?.role === 'admin' && (
               <>
@@ -161,15 +153,19 @@ export function Sidebar({
 
   return (
     <>
-      {/* Mobile menu button */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="fixed top-4 left-4 z-50 lg:hidden"
-        onClick={() => setIsOpen(true)}
-      >
-        <Menu className="h-5 w-5" />
-      </Button>
+      {/* Mobile header bar */}
+      <div className="fixed top-0 left-0 right-0 h-14 bg-background border-b flex items-center justify-between px-4 z-40 lg:hidden">
+        <Button variant="ghost" size="icon" onClick={() => setIsOpen(true)}>
+          <Menu className="h-5 w-5" />
+        </Button>
+        <div className="flex items-center gap-2">
+          <img src="/logo.png" alt="ChatHome" className="h-8 w-8 rounded-lg" />
+          <span className="font-semibold">Family</span>
+        </div>
+        <Button variant="ghost" size="icon" onClick={toggleTheme}>
+          {resolvedTheme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+        </Button>
+      </div>
 
       {/* Mobile overlay */}
       {isOpen && (
@@ -182,7 +178,7 @@ export function Sidebar({
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 w-72 bg-sidebar-background border-r transform transition-transform duration-200 lg:relative lg:transform-none',
+          'fixed inset-y-0 left-0 z-50 w-72 bg-background border-r transform transition-transform duration-200 lg:relative lg:transform-none',
           isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
       >

@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Bot, User } from 'lucide-react'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { User } from 'lucide-react'
 import type { Message } from '@/lib/api'
 
 interface MessageBubbleProps {
@@ -18,10 +18,14 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
         isUser ? 'flex-row-reverse' : 'flex-row'
       )}
     >
-      <Avatar className={cn('h-8 w-8 shrink-0', isUser ? 'bg-primary' : 'bg-muted')}>
-        <AvatarFallback className={cn(isUser ? 'bg-primary text-primary-foreground' : 'bg-muted')}>
-          {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
-        </AvatarFallback>
+      <Avatar className={cn('h-8 w-8 shrink-0', isUser ? 'bg-primary' : '')}>
+        {isUser ? (
+          <AvatarFallback className="bg-primary text-primary-foreground">
+            <User className="h-4 w-4" />
+          </AvatarFallback>
+        ) : (
+          <AvatarImage src="/logo.png" alt="AI" className="rounded-lg" />
+        )}
       </Avatar>
       <div
         className={cn(
@@ -51,11 +55,6 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
             )}
           </div>
         </div>
-        {message.model && !isUser && (
-          <div className="text-xs text-muted-foreground">
-            {message.model === 'fast' ? 'GPT-4.1 mini' : 'GPT-5 mini (thinking)'}
-          </div>
-        )}
       </div>
     </div>
   )

@@ -13,7 +13,7 @@ ENVIRONMENT = "development"
 [[d1_databases]]
 binding = "DB"
 database_name = "chathome"
-database_id = "your-database-id-here"
+database_id = "74c99222-533a-4ead-871a-ecdaedaa5e70"
 
 [[r2_buckets]]
 binding = "FILES"
