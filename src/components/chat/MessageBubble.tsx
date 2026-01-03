@@ -46,13 +46,13 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
           isUser ? 'text-right' : 'text-left'
         )}
       >
-        <div className="relative inline-block max-w-[85%]">
+        <div className={cn("relative inline-block", isUser ? "max-w-[85%]" : "w-full md:max-w-[85%]")}>
           <div
             className={cn(
               'rounded-2xl px-4 py-2 text-left',
               isUser
                 ? 'bg-primary text-primary-foreground rounded-br-md'
-                : 'bg-muted rounded-bl-md'
+                : 'bg-transparent px-0 md:bg-muted md:px-4 rounded-bl-md'
             )}
           >
             <div className="whitespace-pre-wrap break-words text-sm">

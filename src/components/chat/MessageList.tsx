@@ -10,9 +10,36 @@ interface MessageListProps {
 
 export function MessageList({ messages, isStreaming }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
+  const shouldAutoScrollRef = useRef(true)
+  const prevMessagesLengthRef = useRef(messages.length)
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        shouldAutoScrollRef.current = entry.isIntersecting
+      },
+      { threshold: 0.1 }
+    )
+
+    const element = bottomRef.current
+    if (element) {
+      observer.observe(element)
+    }
+
+    return () => {
+      if (element) {
+        observer.unobserve(element)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    const isNewMessage = messages.length > prevMessagesLengthRef.current
+    prevMessagesLengthRef.current = messages.length
+
+    if (isNewMessage || shouldAutoScrollRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages])
 
   if (messages.length === 0) {

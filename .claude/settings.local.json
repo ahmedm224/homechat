@@ -13,7 +13,10 @@
       "Bash(npx wrangler pages deploy:*)",
       "Bash(npx wrangler pages deployment list:*)",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd admin user management and auto-create chat\n\nAdmin features:\n- Create new users with password and role\n- Reset user passwords\n- Toggle public registration on/off\n- Settings table for system configuration\n\nChat improvements:\n- Auto-create conversation when user types without one\n- Remove conversation requirement to enable input\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
-      "Bash(npx wrangler:*)"
+      "Bash(npx wrangler:*)",
+      "Bash(npm run:*)",
+      "Bash(npx tsc:*)",
+      "Bash(git add:*)"
     ]
   }
 }
