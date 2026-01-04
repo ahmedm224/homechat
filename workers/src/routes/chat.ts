@@ -4,10 +4,134 @@ import { z } from 'zod'
 import { extractText } from 'unpdf'
 import JSZip from 'jszip'
 import * as XLSX from 'xlsx'
-import { streamChatCompletion, getSystemPrompt } from '../lib/openai'
+import { streamChatCompletion, getSystemPrompt, generateSearchQuery, shouldUseWebSearch, type MessageContent } from '../lib/openai'
 import { webSearch, formatSearchResults } from '../lib/search'
 import { authMiddleware } from '../middleware/auth'
 import type { Env, User, JWTPayload, Conversation, Message } from '../types'
+
+const REALTIME_KEYWORDS = [
+  'weather',
+  'forecast',
+  'temperature',
+  'humidity',
+  'rain',
+  'snow',
+  'uv index',
+  'air quality',
+  'aqi',
+  'pollen',
+  'news',
+  'headline',
+  'headlines',
+  'breaking',
+  'latest news',
+  'current events',
+  'trending',
+  'stock price',
+  'stock prices',
+  'share price',
+  'market',
+  'dow',
+  'nasdaq',
+  's&p',
+  'crypto',
+  'bitcoin',
+  'btc',
+  'eth',
+  'price',
+  'prices',
+  'sports score',
+  'score',
+  'scores',
+  'game score',
+  'live score',
+  'match result',
+  'results',
+  'standings',
+  'fixtures',
+  'traffic',
+  'commute',
+  'flight status',
+  'train status',
+  'exchange rate',
+  'currency rate',
+]
+
+const TIME_SENSITIVE_HINTS = [
+  'today',
+  'right now',
+  'currently',
+  'tonight',
+  'this week',
+  'this weekend',
+  'this month',
+  'latest',
+  'recent',
+  'forecast',
+  'tomorrow',
+  'next week',
+  'live',
+  'current',
+]
+
+const UNCERTAINTY_PHRASES = [
+  'i do not know',
+  "i don't know",
+  'not sure',
+  'not certain',
+  'no information',
+  'no info',
+  'cannot access',
+  "can't access",
+  'no internet',
+  'cannot browse',
+  "can't browse",
+  'do not have data',
+  "don't have data",
+  'not enough information',
+  'need more context',
+]
+
+function normalizeContent(content: MessageContent | undefined): string {
+  if (!content) return ''
+  if (typeof content === 'string') return content
+
+  return content
+    .map((part) => (part.type === 'text' ? part.text : ''))
+    .filter(Boolean)
+    .join(' ')
+}
+
+function getLastUserText(historyMessages: Array<{ role: 'user' | 'assistant'; content: MessageContent }>): string {
+  const lastUser = [...historyMessages].reverse().find((m) => m.role === 'user')
+  return normalizeContent(lastUser?.content)
+}
+
+function looksLikeRealtimeRequest(text: string): boolean {
+  const lower = text.toLowerCase()
+  if (!lower) return false
+
+  if (REALTIME_KEYWORDS.some((keyword) => lower.includes(keyword))) {
+    return true
+  }
+
+  const hasTimeHint = TIME_SENSITIVE_HINTS.some((hint) => lower.includes(hint))
+  const hasLiveTopic = ['news', 'headline', 'weather', 'forecast', 'score', 'scores', 'stock', 'crypto', 'price', 'rate', 'exchange rate', 'market', 'traffic', 'commute', 'flight', 'train', 'status'].some((topic) =>
+    lower.includes(topic)
+  )
+
+  return hasTimeHint && hasLiveTopic
+}
+
+function lastAssistantWasUncertain(historyMessages: Array<{ role: 'user' | 'assistant'; content: MessageContent }>): boolean {
+  const lastAssistant = [...historyMessages].reverse().find((m) => m.role === 'assistant')
+  if (!lastAssistant) return false
+
+  const text = normalizeContent(lastAssistant.content).toLowerCase()
+  if (!text) return false
+
+  return UNCERTAINTY_PHRASES.some((phrase) => text.includes(phrase))
+}
 
 type Variables = {
   user: JWTPayload
@@ -160,11 +284,43 @@ chat.post('/conversations/:id/messages', zValidator('json', messageSchema), asyn
     )
     .run()
 
-  // Web search if requested
+  // Web search if requested or needed
   let webSearchContext: string | undefined
-  if (doWebSearch) {
+  const historyMessages: Array<{ role: 'user' | 'assistant'; content: MessageContent }> = history.results.map(m => ({
+    role: m.role as 'user' | 'assistant',
+    content: m.content as MessageContent
+  }))
+
+  let shouldSearch = doWebSearch
+  const lastUserText = getLastUserText(historyMessages)
+  const contextualText = [content, lastUserText].filter(Boolean).join(' ')
+
+  // Always enable search for real-time topics like weather or news even if the toggle is off
+  if (!shouldSearch && looksLikeRealtimeRequest(contextualText)) {
+    shouldSearch = true
+    console.log('Web search enabled for real-time topic')
+  }
+
+  // If the model recently said it was unsure, retry with web search
+  if (!shouldSearch && lastAssistantWasUncertain(historyMessages)) {
+    shouldSearch = true
+    console.log('Web search enabled due to previous uncertainty')
+  }
+
+  // If not explicitly requested, check if we should search
+  if (!shouldSearch) {
+    shouldSearch = await shouldUseWebSearch(historyMessages, content, c.env.OPENAI_API_KEY)
+    if (shouldSearch) {
+      console.log('AI decided to use web search')
+    }
+  }
+
+  if (shouldSearch) {
     try {
-      const results = await webSearch(content, c.env.SCRAPINGDOG_API_KEY)
+      const searchQuery = await generateSearchQuery(historyMessages, content, c.env.OPENAI_API_KEY)
+      console.log('Generated search query:', searchQuery)
+      
+      const results = await webSearch(searchQuery, c.env.SCRAPINGDOG_API_KEY)
       webSearchContext = formatSearchResults(results)
     } catch (error) {
       console.error('Web search error:', error)
@@ -323,11 +479,7 @@ chat.post('/conversations/:id/messages', zValidator('json', messageSchema), asyn
   }
 
   // Prepare messages for OpenAI
-  type MessageContent = string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>
-  const messages: Array<{ role: 'user' | 'assistant'; content: MessageContent }> = history.results.map((m) => ({
-    role: m.role as 'user' | 'assistant',
-    content: m.content as MessageContent,
-  }))
+  const messages: Array<{ role: 'user' | 'assistant'; content: MessageContent }> = [...historyMessages]
 
   // Build user message content
   let userMessageContent: string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>

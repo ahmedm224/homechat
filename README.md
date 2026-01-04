@@ -66,6 +66,7 @@ A mobile-first AI chat application for families, built with React and Cloudflare
 - Integrated web search via ScrapingDog API
 - Search results injected into AI context
 - Toggle on/off per message
+- Adaptive auto-search for live topics (news, weather, etc.) or when the model is unsure, even if the toggle is off
 
 ### UI/UX Features
 
